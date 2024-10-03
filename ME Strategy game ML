@@ -1,0 +1,228 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+import itertools
+from collections import defaultdict
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+import time
+
+# Define the environment
+class GeopoliticalSim:
+    def __init__(self):
+        self.agents = ['Russia', 'Iran', 'USA', 'EU', 'Israel', 'China', 'Saudi Arabia']
+        self.actions = ['military', 'economic', 'diplomatic', 'terror', 'cyber']
+        self.action_indices = {action: idx for idx, action in enumerate(self.actions)}
+        self.gdp = {
+            'Russia': 1760000,
+            'Iran': 463000,
+            'USA': 21400000,
+            'EU': 15000000,
+            'Israel': 481000,
+            'China': 14300000,
+            'Saudi Arabia': 793000
+        }
+        self.military_expenditure = {
+            'Russia': 66000,
+            'Iran': 20000,
+            'USA': 778000,
+            'EU': 320000,
+            'Israel': 24000,
+            'China': 252000,
+            'Saudi Arabia': 57000
+        }
+        self.state = self.init_state()
+        self.rewards = defaultdict(lambda: 0)
+        self.escalation_level = 0  # Track overall escalation level
+        self.event_log = []  # Track the sequence of events
+
+    def init_state(self):
+        """Initializes the environment state."""
+        return {
+            agent: {
+                'resources': self.gdp[agent],
+                'power': self.military_expenditure[agent],
+                'alliances': [a for a in self.agents if a != agent and random.random() > 0.7],
+                'regime_stability': random.uniform(0.5, 1.0)  # Regime stability between 0 (unstable) to 1 (very stable)
+            }
+            for agent in self.agents
+        }
+
+    def step(self, actions_taken):
+        """Updates state based on actions taken by all agents."""
+        # Loop through each agent and process the action taken
+        for agent, action in actions_taken.items():
+            if action == 'military':
+                self.handle_military_action(agent)
+            elif action == 'economic':
+                self.handle_economic_action(agent)
+            elif action == 'diplomatic':
+                self.handle_diplomatic_action(agent)
+            elif action == 'terror':
+                self.handle_terror_action(agent)
+            elif action == 'cyber':
+                self.handle_cyber_action(agent)
+
+        # Update escalation level based on the actions taken
+        self.update_escalation_level(actions_taken)
+
+    def log_event(self, agent, action, success, target=None):
+        """Logs an event for the event log."""
+        if target:
+            outcome = "succeeded" if success else "failed"
+            self.event_log.append(f"{agent} attempted a {action} action on {target}, which {outcome}.")
+        else:
+            self.event_log.append(f"{agent} performed a {action} action.")
+
+    def handle_military_action(self, agent):
+        """Handles military actions."""
+        target = random.choice([a for a in self.agents if a != agent])
+        success = random.random() < self.state[agent]['power'] / 1000000.0
+        if success:
+            self.rewards[agent] += 10
+            self.state[target]['resources'] -= 10
+            self.state[target]['regime_stability'] -= 0.1  # Military action destabilizes the target
+            self.escalation_level += 2  # Military actions increase escalation significantly
+        else:
+            self.rewards[agent] -= 5
+            self.state[agent]['regime_stability'] -= 0.05  # Failed military action destabilizes the actor
+            self.escalation_level += 1
+        self.log_event(agent, 'military', success, target)
+
+    def handle_economic_action(self, agent):
+        """Handles economic actions."""
+        target = random.choice([a for a in self.agents if a != agent])
+        self.rewards[agent] += 5
+        self.state[target]['resources'] -= 5
+        self.state[target]['regime_stability'] -= 0.05  # Economic actions can create instability in the target
+        self.escalation_level += 0.5  # Economic actions slightly increase tensions
+        self.log_event(agent, 'economic', True, target)
+
+    def handle_diplomatic_action(self, agent):
+        """Handles diplomatic actions."""
+        target = random.choice([a for a in self.agents if a != agent])
+        success = random.random() > 0.5
+        if success:
+            self.state[agent]['alliances'].append(target)
+            self.rewards[agent] += 8
+            self.state[agent]['regime_stability'] += 0.1  # Successful diplomacy improves regime stability
+            self.escalation_level -= 1  # Successful diplomacy reduces escalation
+        else:
+            self.rewards[agent] -= 3
+            self.state[agent]['regime_stability'] -= 0.05  # Failed diplomacy slightly destabilizes the actor
+            self.escalation_level += 0.5  # Failed diplomacy slightly increases tensions
+        self.log_event(agent, 'diplomatic', success, target)
+
+    def handle_terror_action(self, agent):
+        """Handles terror actions."""
+        target = random.choice([a for a in self.agents if a != agent])
+        success = random.random() < 0.4  # Lower chance of success
+        if success:
+            self.rewards[agent] += 15
+            self.state[target]['resources'] -= 15
+            self.state[target]['regime_stability'] -= 0.2  # Terror actions significantly destabilize the target
+            self.escalation_level += 3  # Terror actions significantly increase escalation
+        else:
+            self.rewards[agent] -= 5
+            self.state[agent]['regime_stability'] -= 0.1  # Failed terror action destabilizes the actor
+            self.escalation_level += 1
+        self.log_event(agent, 'terror', success, target)
+
+    def handle_cyber_action(self, agent):
+        """Handles cyber actions."""
+        target = random.choice([a for a in self.agents if a != agent])
+        success = random.random() < 0.6  # Moderate chance of success
+        if success:
+            self.rewards[agent] += 10
+            self.state[target]['resources'] -= 10
+            self.state[target]['regime_stability'] -= 0.1  # Cyber actions moderately destabilize the target
+            self.escalation_level += 1.5  # Cyber actions moderately increase escalation
+        else:
+            self.rewards[agent] -= 3
+            self.state[agent]['regime_stability'] -= 0.05  # Failed cyber action slightly destabilizes the actor
+            self.escalation_level += 0.5  # Cyber actions moderately increase escalation
+        self.log_event(agent, 'cyber', success, target)
+
+    def update_escalation_level(self, actions_taken):
+        """Evaluates and adjusts the escalation level based on actions taken."""
+        # If multiple agents take military actions simultaneously, escalate more
+        military_actions = sum(1 for action in actions_taken.values() if action == 'military')
+        if military_actions > 1:
+            self.escalation_level += 3  # Significant increase in escalation if multiple military actions
+
+    def get_state(self):
+        return self.state
+
+    def get_rewards(self):
+        return self.rewards
+
+    def get_escalation_level(self):
+        return self.escalation_level
+
+    def get_event_log(self):
+        return self.event_log
+
+# Setting up the Reinforcement Learning (RL)
+def q_learning(sim, num_episodes=500):
+    """Implements Q-learning for the geopolitical scenario."""
+    q_table = defaultdict(lambda: np.zeros(len(sim.actions)))
+    gamma = 0.99  # Discount factor
+    alpha = 0.1  # Learning rate
+    epsilon = 0.1  # Exploration rate
+
+    for episode in range(num_episodes):
+        state = tuple((agent, tuple((k, tuple(v) if isinstance(v, list) else v) for k, v in values.items())) for agent, values in sim.init_state().items())
+        done = False
+
+        while not done:
+            # Epsilon-greedy strategy to choose an action
+            if random.uniform(0, 1) < epsilon:
+                action = random.choice(sim.actions)
+            else:
+                action_idx = np.argmax(q_table[state])
+                action = sim.actions[action_idx]
+            actions_taken = {agent: action for agent in sim.agents}
+
+            # Take action
+            sim.step(actions_taken)
+            new_state = tuple((agent, tuple((k, tuple(v) if isinstance(v, list) else v) for k, v in values.items())) for agent, values in sim.get_state().items())
+            reward = sim.get_rewards()
+
+            # Update Q-table
+            q_table[state][sim.action_indices[action]] = q_table[state][sim.action_indices[action]] + alpha * (
+                reward[action] + gamma * np.max(q_table[new_state]) - q_table[state][sim.action_indices[action]]
+            )
+
+            # Check if escalation level is too high to end episode
+            if sim.get_escalation_level() > 50:
+                done = True
+
+            state = new_state
+
+    return q_table
+
+if __name__ == "__main__":
+    sim = GeopoliticalSim()
+
+    # Set up interactive widgets for user input
+    action_selectors = {agent: widgets.Dropdown(options=sim.actions, description=f'{agent}:') for agent in sim.agents}
+    run_button = widgets.Button(description="Run Simulation")
+    output_area = widgets.Output()
+    event_log_area = widgets.Output()
+
+    def run_simulation(button):
+        actions_taken = {agent: selector.value for agent, selector in action_selectors.items()}
+        sim.step(actions_taken)
+        with output_area:
+            output_area.clear_output()
+            print(f"Current State: {sim.get_state()}")
+            print(f"Escalation Level: {sim.get_escalation_level()}")
+        with event_log_area:
+            event_log_area.clear_output()
+            print("Event Log:")
+            for event in sim.get_event_log():
+                print(event)
+
+    run_button.on_click(run_simulation)
+
+    display(*action_selectors.values(), run_button, output_area, event_log_area)
